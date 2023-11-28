@@ -9,14 +9,35 @@
 // Side Effect: Modifies the hPos and hVel arrays with the new positions and accelerations after 1 INTERVAL
 void compute()
 {
-	// make an acceleration matrix which is NUMENTITIES squared in size;
+	vector3 *values;
+	vector3 **accels;
+
+	cudaMallocManaged(&values, sizeof(vector3) * NUMENTITIES * NUMENTITIES);
+	cudaMallocManaged(&accels, (sizeof(vector3 *)) * NUMENTITIES);
+
+	findDistance<<<1, 100>>>(values, accels);
+	cudaDeviceSynchronize();
+	sumValues<<<1, 100>>>(values, accels);
+
+	cudaFree(accels);
+	cudaFree(values);
+}
+
+__global__ void findDistance(vector3 *values, vector3 **accels)
+{
 	int i, j, k;
-	vector3 *values = (vector3 *)malloc(sizeof(vector3) * NUMENTITIES * NUMENTITIES);
-	vector3 **accels = (vector3 **)malloc(sizeof(vector3 *) * NUMENTITIES);
+	// worry about size later, one block for each thread lol
+
 	for (i = 0; i < NUMENTITIES; i++)
+	{
 		accels[i] = &values[i * NUMENTITIES];
+	}
+
+	int index = threadIdx.x;
+	int stride = blockDim.x; // in the examples case, the stride was 256 (256,0,0)
+
 	// first compute the pairwise accelerations.  Effect is on the first argument.
-	for (i = 0; i < NUMENTITIES; i++)
+	for (i = index; i < NUMENTITIES; i += stride)
 	{
 		for (j = 0; j < NUMENTITIES; j++)
 		{
@@ -38,8 +59,23 @@ void compute()
 			}
 		}
 	}
-	// sum up the rows of our matrix to get effect on each entity, then update velocity and position.
+}
+
+__global__ void sumValues(vector3 *values, vector3 **accels)
+{
+	int i, j, k;
+
+	// worry about size later, one block for each thread lol
+
 	for (i = 0; i < NUMENTITIES; i++)
+	{
+		accels[i] = &values[i * NUMENTITIES];
+	}
+
+	int index = threadIdx.x;
+	int stride = blockDim.x; // in the examples case, the stride was 256 (256,0,0)
+
+	for (i = index; i < NUMENTITIES; i += stride)
 	{
 		vector3 accel_sum = {0, 0, 0};
 		for (j = 0; j < NUMENTITIES; j++)
@@ -57,10 +93,4 @@ void compute()
 			hPos[i][k] += hVel[i][k] * INTERVAL;
 		}
 	}
-	free(accels);
-	free(values);
-}
-
-void computeParallel()
-{
 }
