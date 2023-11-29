@@ -1,37 +1,14 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <math.h>
 #include "vector.h"
 #include "config.h"
 
-// compute: Updates the positions and locations of the objects in the system based on gravity.
-// Parameters: None
-// Returns: None
-// Side Effect: Modifies the hPos and hVel arrays with the new positions and accelerations after 1 INTERVAL
-void compute()
+__global__ void findDistance(vector3 **accels, vector3 *hPos, vector3 *hVel, double *mass)
 {
-	vector3 *values;
-	vector3 **accels;
-
-	cudaMallocManaged(&values, sizeof(vector3) * NUMENTITIES * NUMENTITIES);
-	cudaMallocManaged(&accels, (sizeof(vector3 *)) * NUMENTITIES);
-
-	findDistance<<<1, 100>>>(values, accels);
-	cudaDeviceSynchronize();
-	sumValues<<<1, 100>>>(values, accels);
-
-	cudaFree(accels);
-	cudaFree(values);
-}
-
-__global__ void findDistance(vector3 *values, vector3 **accels)
-{
+	// printf("findDIstance is here\n");
 	int i, j, k;
 	// worry about size later, one block for each thread lol
-
-	for (i = 0; i < NUMENTITIES; i++)
-	{
-		accels[i] = &values[i * NUMENTITIES];
-	}
 
 	int index = threadIdx.x;
 	int stride = blockDim.x; // in the examples case, the stride was 256 (256,0,0)
@@ -47,6 +24,7 @@ __global__ void findDistance(vector3 *values, vector3 **accels)
 			}
 			else
 			{
+
 				vector3 distance;
 				for (k = 0; k < 3; k++)
 				{
@@ -61,16 +39,11 @@ __global__ void findDistance(vector3 *values, vector3 **accels)
 	}
 }
 
-__global__ void sumValues(vector3 *values, vector3 **accels)
+__global__ void sumValues(vector3 **accels, vector3 *hPos, vector3 *hVel)
 {
 	int i, j, k;
 
 	// worry about size later, one block for each thread lol
-
-	for (i = 0; i < NUMENTITIES; i++)
-	{
-		accels[i] = &values[i * NUMENTITIES];
-	}
 
 	int index = threadIdx.x;
 	int stride = blockDim.x; // in the examples case, the stride was 256 (256,0,0)
@@ -93,4 +66,36 @@ __global__ void sumValues(vector3 *values, vector3 **accels)
 			hPos[i][k] += hVel[i][k] * INTERVAL;
 		}
 	}
+}
+
+// compute: Updates the positions and locations of the objects in the system based on gravity.
+// Parameters: None
+// Returns: None
+// Side Effect: Modifies the hPos and hVel arrays with the new positions and accelerations after 1 INTERVAL
+void compute(vector3 *hPos, vector3 *hVel, double *mass)
+{
+	vector3 *values;
+	vector3 **accels;
+
+	cudaMallocManaged(&values, sizeof(vector3) * NUMENTITIES * NUMENTITIES);
+	cudaMallocManaged(&accels, (sizeof(vector3 *)) * NUMENTITIES);
+	for (int i = 0; i < NUMENTITIES; i++)
+	{
+		accels[i] = &values[i * NUMENTITIES];
+	} // make temp arr and do memcpy for non malloc managed version of accels.
+
+	// printf("%lf\n", hPos[0][1]);
+	// fflush(stdout);
+	findDistance<<<1, 1>>>(accels, hPos, hVel, mass);
+	cudaDeviceSynchronize();
+
+	// printf("full ran findDistance\n");
+	// fflush(stdout);
+
+	sumValues<<<1, 1>>>(accels, hPos, hVel);
+	cudaDeviceSynchronize();
+	/*
+		cudaFree(accels);
+	cudaFree(values);
+	*/
 }
