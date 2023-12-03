@@ -16,6 +16,7 @@ __global__ void findDistance(vector3 **accels, vector3 *hPos, vector3 *hVel, dou
 	// first compute the pairwise accelerations.  Effect is on the first argument.
 	for (i = index; i < NUMENTITIES; i += stride)
 	{
+		printf("iterations:%d ,", i);
 		for (j = 0; j < NUMENTITIES; j++)
 		{
 			if (i == j)
@@ -74,28 +75,39 @@ __global__ void sumValues(vector3 **accels, vector3 *hPos, vector3 *hVel)
 // Side Effect: Modifies the hPos and hVel arrays with the new positions and accelerations after 1 INTERVAL
 void compute(vector3 *hPos, vector3 *hVel, double *mass)
 {
+	// printf("Entered into compute\n");
+	// fflush(stdout);
+
 	vector3 *values;
 	vector3 **accels;
 
-	cudaMallocManaged(&values, sizeof(vector3) * NUMENTITIES * NUMENTITIES);
-	cudaMallocManaged(&accels, (sizeof(vector3 *)) * NUMENTITIES);
+	// printf("Hello3\n");
+	// fflush(stdout);
+
+	values = (vector3 *)malloc(sizeof(vector3) * NUMENTITIES * NUMENTITIES);
+	vector3 **tempAccel = (vector3 **)malloc(sizeof(vector3 *) * NUMENTITIES);
+
+	// printf("Hello4\n");
+	// fflush(stdout);
+
 	for (int i = 0; i < NUMENTITIES; i++)
 	{
-		accels[i] = &values[i * NUMENTITIES];
+		tempAccel[i] = &values[i * NUMENTITIES];
 	} // make temp arr and do memcpy for non malloc managed version of accels.
+
+	cudaMalloc(&accels, (sizeof(vector3 *)) * NUMENTITIES);
+	cudaMemcpy(accels, tempAccel, sizeof(vector3) * NUMENTITIES, cudaMemcpyHostToDevice);
 
 	// printf("%lf\n", hPos[0][1]);
 	// fflush(stdout);
-	findDistance<<<1, 1>>>(accels, hPos, hVel, mass);
-	cudaDeviceSynchronize();
+	findDistance<<<1, 256>>>(accels, hPos, hVel, mass);
+	// cudaDeviceSynchronize();
 
 	// printf("full ran findDistance\n");
 	// fflush(stdout);
 
-	sumValues<<<1, 1>>>(accels, hPos, hVel);
-	cudaDeviceSynchronize();
-	/*
-		cudaFree(accels);
+	sumValues<<<1, 256>>>(accels, hPos, hVel);
+	// cudaDeviceSynchronize();
+	cudaFree(accels);
 	cudaFree(values);
-	*/
 }
