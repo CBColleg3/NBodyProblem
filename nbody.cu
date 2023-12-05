@@ -124,25 +124,50 @@ int main(int argc, char **argv)
 
 	initHostMemory(NUMENTITIES);
 	initDeviceMemory(NUMENTITIES);
-	loadDeviceMemory(NUMENTITIES);
 
 	planetFill();
 	randomFill(NUMPLANETS + 1, NUMASTEROIDS);
-// now we have a system.
+
+	loadDeviceMemory(NUMENTITIES);
+	// now we have a system.
 #ifdef DEBUG
+	printf("printing system for the first time.\n");
 	printSystem(stdout);
 #endif
+
+	vector3 *values;
+	vector3 **accels;
+
+	// The cudaMallocs and frees should be in nbody because u compute these everytime for parallel version, definitely a speed issue.
+	//  next should be cudamalloc
+	cudaMalloc(&values, sizeof(vector3) * NUMENTITIES * NUMENTITIES);
+	vector3 **tempAccel = (vector3 **)malloc(sizeof(vector3 *) * NUMENTITIES);
+
+	for (int i = 0; i < NUMENTITIES; i++)
+	{
+		tempAccel[i] = &values[i * NUMENTITIES];
+	}
+
+	cudaMalloc(&accels, (sizeof(vector3 *)) * NUMENTITIES);
+	cudaMemcpy(accels, tempAccel, sizeof(vector3) * NUMENTITIES, cudaMemcpyHostToDevice);
+	free(tempAccel);
 	for (t_now = 0; t_now < DURATION; t_now += INTERVAL)
 	{
 		// printf("Going into compute now.\n");
 		// fflush(stdout);
 		compute(d_hPos, d_hVel, d_mass);
 	}
+	// cudamemcopy hPos and hVel. mass doesn't change so we dont care about mass.
+	cudaMemcpy(&hVel, &d_hVel, sizeof(vector3) * NUMENTITIES, cudaMemcpyDeviceToHost);
+	cudaMemcpy(&hPos, &d_hPos, sizeof(vector3) * NUMENTITIES, cudaMemcpyDeviceToHost);
 	clock_t t1 = clock() - t0;
 #ifdef DEBUG
+	printf("printing system after compute.\n");
 	printSystem(stdout);
 #endif
 	printf("This took a total time of %f seconds\n", (double)t1 / CLOCKS_PER_SEC);
-
+	
+	cudaFree(accels);
+	cudaFree(values);
 	freeHostMemory();
 }

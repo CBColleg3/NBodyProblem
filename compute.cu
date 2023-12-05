@@ -10,13 +10,14 @@ __global__ void findDistance(vector3 **accels, vector3 *hPos, vector3 *hVel, dou
 	int i, j, k;
 	// worry about size later, one block for each thread lol
 
-	int index = threadIdx.x;
-	int stride = blockDim.x; // in the examples case, the stride was 256 (256,0,0)
+	// int index = threadIdx.x;
+	// int stride = blockDim.x;
+
+	// if i or j >= NUMENTITIES then return
 
 	// first compute the pairwise accelerations.  Effect is on the first argument.
-	for (i = index; i < NUMENTITIES; i += stride)
+	for (i = 0; i < NUMENTITIES; i++)
 	{
-		printf("iterations:%d ,", i);
 		for (j = 0; j < NUMENTITIES; j++)
 		{
 			if (i == j)
@@ -46,10 +47,12 @@ __global__ void sumValues(vector3 **accels, vector3 *hPos, vector3 *hVel)
 
 	// worry about size later, one block for each thread lol
 
-	int index = threadIdx.x;
-	int stride = blockDim.x; // in the examples case, the stride was 256 (256,0,0)
+	// Similar thing for i and j here I believe
 
-	for (i = index; i < NUMENTITIES; i += stride)
+	// int index = threadIdx.x;
+	// int stride = blockDim.x; // in the examples case, the stride was 256 (256,0,0)
+
+	for (i = 0; i < NUMENTITIES; i++)
 	{
 		vector3 accel_sum = {0, 0, 0};
 		for (j = 0; j < NUMENTITIES; j++)
@@ -61,11 +64,33 @@ __global__ void sumValues(vector3 **accels, vector3 *hPos, vector3 *hVel)
 		}
 		// compute the new velocity based on the acceleration and time interval
 		// compute the new position based on the velocity and time interval
+
+		// Silber did an additional kernel here to complete his reduction, u have
+		// to do syncthreads if ur doing another kernel. cuts about a second of runtime.
 		for (k = 0; k < 3; k++)
 		{
 			hVel[i][k] += accel_sum[k] * INTERVAL;
 			hPos[i][k] += hVel[i][k] * INTERVAL;
 		}
+	}
+}
+
+void printDeviceSystem(FILE *handle)
+{
+	int i, j;
+	for (i = 0; i < NUMENTITIES; i++)
+	{
+		fprintf(handle, "pos=(");
+		for (j = 0; j < 3; j++)
+		{
+			fprintf(handle, "%lf,", hPos[i][j]);
+		}
+		printf("),v=(");
+		for (j = 0; j < 3; j++)
+		{
+			fprintf(handle, "%lf,", hVel[i][j]);
+		}
+		fprintf(handle, "),m=%lf\n", mass[i]);
 	}
 }
 
@@ -75,39 +100,11 @@ __global__ void sumValues(vector3 **accels, vector3 *hPos, vector3 *hVel)
 // Side Effect: Modifies the hPos and hVel arrays with the new positions and accelerations after 1 INTERVAL
 void compute(vector3 *hPos, vector3 *hVel, double *mass)
 {
-	// printf("Entered into compute\n");
-	// fflush(stdout);
 
-	vector3 *values;
-	vector3 **accels;
+	printf("printing device variables\n");
+	printDeviceSystem(stdout);
 
-	// printf("Hello3\n");
-	// fflush(stdout);
+	findDistance<<<1, 1>>>(accels, hPos, hVel, mass);
+	sumValues<<<1, 1>>>(accels, hPos, hVel);
 
-	values = (vector3 *)malloc(sizeof(vector3) * NUMENTITIES * NUMENTITIES);
-	vector3 **tempAccel = (vector3 **)malloc(sizeof(vector3 *) * NUMENTITIES);
-
-	// printf("Hello4\n");
-	// fflush(stdout);
-
-	for (int i = 0; i < NUMENTITIES; i++)
-	{
-		tempAccel[i] = &values[i * NUMENTITIES];
-	} // make temp arr and do memcpy for non malloc managed version of accels.
-
-	cudaMalloc(&accels, (sizeof(vector3 *)) * NUMENTITIES);
-	cudaMemcpy(accels, tempAccel, sizeof(vector3) * NUMENTITIES, cudaMemcpyHostToDevice);
-
-	// printf("%lf\n", hPos[0][1]);
-	// fflush(stdout);
-	findDistance<<<1, 256>>>(accels, hPos, hVel, mass);
-	// cudaDeviceSynchronize();
-
-	// printf("full ran findDistance\n");
-	// fflush(stdout);
-
-	sumValues<<<1, 256>>>(accels, hPos, hVel);
-	// cudaDeviceSynchronize();
-	cudaFree(accels);
-	cudaFree(values);
 }
