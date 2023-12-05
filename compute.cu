@@ -18,6 +18,7 @@ __global__ void findDistance(vector3 **accels, vector3 *hPos, vector3 *hVel, dou
 	// first compute the pairwise accelerations.  Effect is on the first argument.
 	for (i = 0; i < NUMENTITIES; i++)
 	{
+		// printf("bruh\n");
 		for (j = 0; j < NUMENTITIES; j++)
 		{
 			if (i == j)
@@ -75,36 +76,34 @@ __global__ void sumValues(vector3 **accels, vector3 *hPos, vector3 *hVel)
 	}
 }
 
-void printDeviceSystem(FILE *handle)
-{
-	int i, j;
-	for (i = 0; i < NUMENTITIES; i++)
-	{
-		fprintf(handle, "pos=(");
-		for (j = 0; j < 3; j++)
-		{
-			fprintf(handle, "%lf,", hPos[i][j]);
-		}
-		printf("),v=(");
-		for (j = 0; j < 3; j++)
-		{
-			fprintf(handle, "%lf,", hVel[i][j]);
-		}
-		fprintf(handle, "),m=%lf\n", mass[i]);
-	}
-}
-
 // compute: Updates the positions and locations of the objects in the system based on gravity.
 // Parameters: None
 // Returns: None
 // Side Effect: Modifies the hPos and hVel arrays with the new positions and accelerations after 1 INTERVAL
-void compute(vector3 *hPos, vector3 *hVel, double *mass)
+void compute(vector3 **accels, vector3 *hPos, vector3 *hVel, double *mass)
 {
 
-	printf("printing device variables\n");
-	printDeviceSystem(stdout);
+	cudaError_t e = cudaGetLastError();
+	if (e != cudaSuccess)
+	{
+		printf("something before compute is bad! %s\n", cudaGetErrorString(e));
+	}
+	// printf("printing device variables\n");
+	// printDeviceSystem(stdout);
+
+	// My kernel is not firing;
 
 	findDistance<<<1, 1>>>(accels, hPos, hVel, mass);
-	sumValues<<<1, 1>>>(accels, hPos, hVel);
+	e = cudaDeviceSynchronize();
+	if (e != cudaSuccess)
+	{
+		printf("find Distance is bad %s\n", cudaGetErrorString(e));
+	}
 
+	sumValues<<<1, 1>>>(accels, hPos, hVel);
+	e = cudaDeviceSynchronize();
+	if (e != cudaSuccess)
+	{
+		printf("sum Values is bad %s\n", cudaGetErrorString(e));
+	}
 }

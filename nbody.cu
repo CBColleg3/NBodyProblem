@@ -14,6 +14,9 @@ vector3 *hVel, *d_hVel;
 vector3 *hPos, *d_hPos;
 double *mass, *d_mass;
 
+vector3 *values;
+vector3 **accels;
+
 // initHostMemory: Create storage for numObjects entities in our system
 // Parameters: numObjects: number of objects to allocate
 // Returns: None
@@ -27,16 +30,42 @@ void initHostMemory(int numObjects)
 
 void initDeviceMemory(int numObjects)
 {
-	cudaMalloc(&d_hVel, sizeof(vector3) * numObjects);
-	cudaMalloc(&d_hPos, sizeof(vector3) * numObjects);
-	cudaMalloc(&d_mass, sizeof(double) * numObjects);
+	cudaError_t dVelMalloc = cudaMalloc(&d_hVel, sizeof(vector3) * numObjects);
+	cudaError_t dPosMalloc = cudaMalloc(&d_hPos, sizeof(vector3) * numObjects);
+	cudaError_t dmassMalloc = cudaMalloc(&d_mass, sizeof(double) * numObjects);
+
+	if (dVelMalloc != cudaSuccess)
+	{
+		printf("dVelMalloc is bad\n");
+	}
+	if (dPosMalloc != cudaSuccess)
+	{
+		printf("dPosMalloc is bad\n");
+	}
+	if (dmassMalloc != cudaSuccess)
+	{
+		printf("dMassMalloc is bad\n");
+	}
 }
 
 void loadDeviceMemory(int numObjects)
 {
-	cudaMemcpy(&d_hVel, &hVel, sizeof(vector3) * numObjects, cudaMemcpyHostToDevice);
-	cudaMemcpy(&d_hPos, &hPos, sizeof(vector3) * numObjects, cudaMemcpyHostToDevice);
-	cudaMemcpy(&d_mass, &mass, sizeof(vector3) * numObjects, cudaMemcpyHostToDevice);
+	cudaError_t hVelCpy = cudaMemcpy(d_hVel, hVel, sizeof(vector3) * numObjects, cudaMemcpyHostToDevice);
+	cudaError_t hPosCpy = cudaMemcpy(d_hPos, hPos, sizeof(vector3) * numObjects, cudaMemcpyHostToDevice);
+	cudaError_t dMassCpy = cudaMemcpy(d_mass, mass, sizeof(double) * numObjects, cudaMemcpyHostToDevice);
+
+	if (hVelCpy != cudaSuccess)
+	{
+		printf("hVelCpy is bad %s\n", cudaGetErrorString(hVelCpy));
+	}
+	if (hPosCpy != cudaSuccess)
+	{
+		printf("hPosCpy is bad %s\n", cudaGetErrorString(hPosCpy));
+	}
+	if (dMassCpy != cudaSuccess)
+	{
+		printf("dMassCpy is bad %s\n", cudaGetErrorString(dMassCpy));
+	}
 }
 
 // freeHostMemory: Free storage allocated by a previous call to initHostMemory
@@ -115,6 +144,40 @@ void printSystem(FILE *handle)
 	}
 }
 
+void initAccels()
+{
+	// The cudaMallocs and frees should be in nbody because u compute these everytime for parallel version, definitely a speed issue.
+	//  next should be cudamalloc
+	cudaMalloc(&values, sizeof(vector3) * NUMENTITIES * NUMENTITIES);
+	cudaError_t e = cudaGetLastError();
+	if (e != cudaSuccess)
+	{
+		printf("values Malloc is bad! %s\n", cudaGetErrorString(e));
+	}
+
+	vector3 **tempAccel = (vector3 **)malloc(sizeof(vector3 *) * NUMENTITIES);
+	for (int i = 0; i < NUMENTITIES; i++)
+	{
+		tempAccel[i] = &values[i * NUMENTITIES];
+	}
+
+	cudaMalloc(&accels, (sizeof(vector3 *)) * NUMENTITIES);
+	e = cudaGetLastError();
+	if (e != cudaSuccess)
+	{
+		printf("cudaMalloc accels is bad! %s\n", cudaGetErrorString(e));
+	}
+
+	// MemCopy Accels is bad.
+	cudaMemcpy(accels, tempAccel, sizeof(vector3 *) * NUMENTITIES, cudaMemcpyHostToDevice);
+	e = cudaGetLastError();
+	if (e != cudaSuccess)
+	{
+		printf("memCopy accels is bad! %s\n", cudaGetErrorString(e));
+	}
+	free(tempAccel);
+}
+
 int main(int argc, char **argv)
 {
 	clock_t t0 = clock();
@@ -135,38 +198,21 @@ int main(int argc, char **argv)
 	printSystem(stdout);
 #endif
 
-	vector3 *values;
-	vector3 **accels;
-
-	// The cudaMallocs and frees should be in nbody because u compute these everytime for parallel version, definitely a speed issue.
-	//  next should be cudamalloc
-	cudaMalloc(&values, sizeof(vector3) * NUMENTITIES * NUMENTITIES);
-	vector3 **tempAccel = (vector3 **)malloc(sizeof(vector3 *) * NUMENTITIES);
-
-	for (int i = 0; i < NUMENTITIES; i++)
-	{
-		tempAccel[i] = &values[i * NUMENTITIES];
-	}
-
-	cudaMalloc(&accels, (sizeof(vector3 *)) * NUMENTITIES);
-	cudaMemcpy(accels, tempAccel, sizeof(vector3) * NUMENTITIES, cudaMemcpyHostToDevice);
-	free(tempAccel);
+	initAccels();
 	for (t_now = 0; t_now < DURATION; t_now += INTERVAL)
 	{
-		// printf("Going into compute now.\n");
-		// fflush(stdout);
-		compute(d_hPos, d_hVel, d_mass);
+		compute(accels, d_hPos, d_hVel, d_mass);
 	}
 	// cudamemcopy hPos and hVel. mass doesn't change so we dont care about mass.
-	cudaMemcpy(&hVel, &d_hVel, sizeof(vector3) * NUMENTITIES, cudaMemcpyDeviceToHost);
-	cudaMemcpy(&hPos, &d_hPos, sizeof(vector3) * NUMENTITIES, cudaMemcpyDeviceToHost);
+	cudaMemcpy(hVel, d_hVel, sizeof(vector3) * NUMENTITIES, cudaMemcpyDeviceToHost);
+	cudaMemcpy(hPos, d_hPos, sizeof(vector3) * NUMENTITIES, cudaMemcpyDeviceToHost);
 	clock_t t1 = clock() - t0;
 #ifdef DEBUG
 	printf("printing system after compute.\n");
 	printSystem(stdout);
 #endif
 	printf("This took a total time of %f seconds\n", (double)t1 / CLOCKS_PER_SEC);
-	
+
 	cudaFree(accels);
 	cudaFree(values);
 	freeHostMemory();
