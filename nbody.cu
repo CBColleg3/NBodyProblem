@@ -26,6 +26,19 @@ void initHostMemory(int numObjects)
 	hVel = (vector3 *)malloc(sizeof(vector3) * numObjects);
 	hPos = (vector3 *)malloc(sizeof(vector3) * numObjects);
 	mass = (double *)malloc(sizeof(double) * numObjects);
+
+	if (hVel == NULL)
+	{
+		printf("hVel malloc failed!\n");
+	}
+	if (hPos == NULL)
+	{
+		printf("hPos malloc failed!");
+	}
+	if (mass == NULL)
+	{
+		printf("mass malloc failed!");
+	}
 }
 
 void initDeviceMemory(int numObjects)
@@ -74,9 +87,13 @@ void loadDeviceMemory(int numObjects)
 // Side Effects: Frees the memory allocated to global variables hVel, hPos, and mass.
 void freeHostMemory()
 {
-	// free(hVel);
-	// free(hPos);
-	// free(mass);
+	free(hVel);
+	free(hPos);
+	free(mass);
+}
+
+void freeDeviceMemory()
+{
 	cudaFree(hVel);
 	cudaFree(hPos);
 	cudaFree(mass);
@@ -155,17 +172,26 @@ void initAccels()
 		printf("values Malloc is bad! %s\n", cudaGetErrorString(e));
 	}
 
-	vector3 **tempAccel = (vector3 **)malloc(sizeof(vector3 *) * NUMENTITIES);
-	for (int i = 0; i < NUMENTITIES; i++)
-	{
-		tempAccel[i] = &values[i * NUMENTITIES];
-	}
-
 	cudaMalloc(&accels, (sizeof(vector3 *)) * NUMENTITIES);
 	e = cudaGetLastError();
 	if (e != cudaSuccess)
 	{
 		printf("cudaMalloc accels is bad! %s\n", cudaGetErrorString(e));
+	}
+
+	vector3 **tempAccel = (vector3 **)malloc(sizeof(vector3 *) * NUMENTITIES);
+	if (tempAccel == NULL)
+	{
+		printf("tempAccel malloc is bad!\n");
+	}
+
+	for (int i = 0; i < NUMENTITIES; i++)
+	{
+		tempAccel[i] = &values[i * NUMENTITIES];
+		if (tempAccel[i] == NULL)
+		{
+			printf("This TempAccel[i] doesn't exist!!\n");
+		}
 	}
 
 	// MemCopy Accels is bad.
@@ -178,6 +204,25 @@ void initAccels()
 	free(tempAccel);
 }
 
+void copyDeviceToHost()
+{
+	// cudamemcopy hPos and hVel. mass doesn't change so we dont care about mass.
+	cudaMemcpy(hVel, d_hVel, sizeof(vector3) * NUMENTITIES, cudaMemcpyDeviceToHost);
+
+	cudaError_t e = cudaGetLastError();
+	if (e != cudaSuccess)
+	{
+		printf("cudaMemcpy hVel dhVel is bad! %s\n", cudaGetErrorString(e));
+	}
+
+	cudaMemcpy(hPos, d_hPos, sizeof(vector3) * NUMENTITIES, cudaMemcpyDeviceToHost);
+	e = cudaGetLastError();
+	if (e != cudaSuccess)
+	{
+		printf("cudaMemcpy hPos dhPos is bad! %s\n", cudaGetErrorString(e));
+	}
+}
+
 int main(int argc, char **argv)
 {
 	clock_t t0 = clock();
@@ -187,7 +232,6 @@ int main(int argc, char **argv)
 
 	initHostMemory(NUMENTITIES);
 	initDeviceMemory(NUMENTITIES);
-
 	planetFill();
 	randomFill(NUMPLANETS + 1, NUMASTEROIDS);
 
@@ -201,19 +245,18 @@ int main(int argc, char **argv)
 	initAccels();
 	for (t_now = 0; t_now < DURATION; t_now += INTERVAL)
 	{
+		// printf("d_hPos %lf, d_hVel %lf, d_mass %lf", *d_hPos, *d_hVel, *d_mass);
 		compute(accels, d_hPos, d_hVel, d_mass);
 	}
-	// cudamemcopy hPos and hVel. mass doesn't change so we dont care about mass.
-	cudaMemcpy(hVel, d_hVel, sizeof(vector3) * NUMENTITIES, cudaMemcpyDeviceToHost);
-	cudaMemcpy(hPos, d_hPos, sizeof(vector3) * NUMENTITIES, cudaMemcpyDeviceToHost);
+	copyDeviceToHost();
 	clock_t t1 = clock() - t0;
 #ifdef DEBUG
 	printf("printing system after compute.\n");
 	printSystem(stdout);
 #endif
 	printf("This took a total time of %f seconds\n", (double)t1 / CLOCKS_PER_SEC);
-
 	cudaFree(accels);
 	cudaFree(values);
+	freeDeviceMemory();
 	freeHostMemory();
 }
