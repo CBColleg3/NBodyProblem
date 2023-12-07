@@ -38,24 +38,19 @@ __global__ void findDistance(vector3 **accels, vector3 *hPos, double *mass)
 __global__ void sumValues(vector3 **accels, vector3 *hPos, vector3 *hVel)
 {
 	int i = blockIdx.x;
-	int j, k;
+	int k = threadIdx.x;
+	int j;
 
 	vector3 accel_sum = {0, 0, 0};
 	for (j = 0; j < NUMENTITIES; j++)
 	{
-		for (k = 0; k < 3; k++)
-		{
-			accel_sum[k] += accels[i][j][k];
-			//  printf("accels[%d][%d][%d]: %lf\n", i, j, k, accels[i][j][k]);
-		}
+		accel_sum[k] += accels[i][j][k];
+		//  printf("accels[%d][%d][%d]: %lf\n", i, j, k, accels[i][j][k]);
 	}
 	// compute the new velocity based on the acceleration and time interval
 	// compute the new position based on the velocity and time interval
-	for (k = 0; k < 3; k++)
-	{
-		hVel[i][k] += accel_sum[k] * INTERVAL;
-		hPos[i][k] += hVel[i][k] * INTERVAL;
-	}
+	hVel[i][k] += accel_sum[k] * INTERVAL;
+	hPos[i][k] += hVel[i][k] * INTERVAL;
 }
 
 // compute: Updates the positions and locations of the objects in the system based on gravity.
@@ -71,7 +66,7 @@ void compute(vector3 **accels, vector3 *hPos, vector3 *hVel, double *mass)
 		printf("something before compute is bad! %s\n", cudaGetErrorString(e));
 	}
 
-	dim3 blockSize(16, 16); // 256 threads
+	dim3 blockSize(16, 16, 3); // 256 threads
 	dim3 numBlocks((NUMENTITIES + 15) / blockSize.x, (NUMENTITIES + 15) / blockSize.y);
 	// NUMENTITIES = 6 blocks across and 6 down.
 	// Rounded up integer division ^. we want more threads then we need.
@@ -85,7 +80,7 @@ void compute(vector3 **accels, vector3 *hPos, vector3 *hVel, double *mass)
 	}
 
 	dim3 grim_dim(NUMENTITIES, 1, 1);
-	sumValues<<<grim_dim, 1>>>(accels, hPos, hVel);
+	sumValues<<<grim_dim, 3>>>(accels, hPos, hVel);
 	e = cudaDeviceSynchronize();
 	if (e != cudaSuccess)
 	{

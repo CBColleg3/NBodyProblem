@@ -238,7 +238,7 @@ int main(int argc, char **argv)
 	loadDeviceMemory(NUMENTITIES);
 	// now we have a system.
 #ifdef DEBUG
-	printf("printing system for the first time.\n");
+	// printf("printing system for the first time.\n");
 	printSystem(stdout);
 #endif
 
@@ -251,7 +251,7 @@ int main(int argc, char **argv)
 	copyDeviceToHost();
 	clock_t t1 = clock() - t0;
 #ifdef DEBUG
-	printf("printing system after compute.\n");
+	// printf("printing system after compute.\n");
 	printSystem(stdout);
 #endif
 	printf("This took a total time of %f seconds\n", (double)t1 / CLOCKS_PER_SEC);
